@@ -16,7 +16,7 @@
 
 void clientAccess(const int clientSocket);
 
-int main(int args, char *argv[]){
+int main(){
 
 	u_int port; 
 	int serverSocket; 
@@ -24,20 +24,7 @@ int main(int args, char *argv[]){
 
 	int multi;
 
-		//Validamos argumentos
-	if(args < 2)
-	{
-		printf("Error: Misssing Arguments\n");
-		printf("\tUse: %s [PORT]\n",argv[0]);
-		return 1;
-	}
-
-	port = atoi(argv[1]);
-	if(port < 1 || port > 65535)
-	{
-		printf("Port %i out of the range (1 - 65535)\n",port);
-		return 1;
-	}
+	port = 80;
 
 		//Creamos el socket en base a NewSockets.h
 	serverSocket = newTCPServerSocket4(port, 5);
