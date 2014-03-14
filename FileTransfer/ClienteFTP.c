@@ -10,20 +10,15 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "NewSockets.h"
+
 #define BUFFERSIZE 1048576
 
 int main(int args, char *argv[]) {
 
 	u_int port; // Tipo de unisgned int que guarda el valor del puerto
-	int server; // Guarda el descriptor del socket del servidor
-	int client; //Guarda el descriptor del sockets del cliente
-	int localerror;  //Variable para errores
-	struct sockaddr_in server_addr;  /* Estructura que guarda:
-									* sin_family = AF_INET: Tipo de conexion, conexiones ya sean en la misma maquina o en diversas maquinas
-									* sin_port = numero del puerto a utilizar, se debe hacer la conversion con htons(port)
-									* sin_addr.s_addr = La direccion del cliente. INADDR_ANY: acepta cualquier ip, pero es para el server
-									*/
-	socklen_t clienteLen;	
+	int client; // Guarda el descriptor del socket del servidor
+
 	int status; // Variable que guarda el status del descriptor, si se creo correctamente o no
 	
 	int readBytes = 0;  //Variable auxiliar para leer bytes
@@ -32,12 +27,14 @@ int main(int args, char *argv[]) {
 	int writeBytes = 0;  //Variable auxiliar para escribir bytes
 	char *readBuffer = NULL; //Variable auxiliar para leer el buffer
 	int file;  //Variable para el archivo
+	char answer [50];
+	char fileSize [50];
 	
 
 	//Validamos los Arguemntos
-	if(args < 3) {
+	if(args < 4) {
 		fprintf(stderr,"Error: Missing Arguments\n");
-		fprintf(stderr,"\tUSE: %s [ADDR] [PORT]\n",argv[0]);
+		fprintf(stderr,"\tUSE: %s [ADDR] [PORT] [FILE]\n",argv[0]);
 		return 1;
 	}
 	
@@ -48,36 +45,41 @@ int main(int args, char *argv[]) {
 	}
 	
 	//Abrimos el socket
-	server = socket(AF_INET, SOCK_STREAM, 0);
-	if(server == -1)
+	client = newTCPClientSocket4(argv[1], port);
+	
+	//Preguntamos por el archivo
+	status = write(client, argv[3], strlen(argv[3]));
+	
+	//Esperamos la respuesta
+	status = read(client, answer, sizeof(answer));
+	printf("Server says: %s\n", answer);
+	
+	if((strcmp(answer, "Not Found\r\n")) == 0)
 	{
-		printf("Error: Socket can't be opened\n");
+		printf("File not found in the server, closing connection\n");
+		closeTCPSocket(client);
 		return 1;
 	}
+	
+	//Esperamos a que nos envien el tamaño del archivo
+	status = read(client, answer, sizeof(answer));
+	printf("File Size: %s\n", answer);
+	strcpy(fileSize, answer);
+	printf("%s\n", fileSize);
+	
+	//Aceptamos el envio
+	status = write(client, "OK\r\n", 6);
 	
 	//Abrimos el archivo
-	if((file = open("rec2.jpg",O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)) == -1) {
-		localerror = errno;
-		fprintf(stderr,"Can't open file for write (%s)\n",strerror(localerror));
-		return 1;
-	}
-	
-	//Nos preparamos para la conexion
-	server_addr.sin_family = AF_INET;
-	status = inet_pton(AF_INET, argv[1], &server_addr.sin_addr.s_addr);
-	server_addr.sin_port = htons(port);
-	
-	status = connect(server, (struct sockaddr*)&server_addr, sizeof(server_addr));
-	if(status != 0)
-	{
-		printf("Error: Can't connect\n");
+	if((file = open(argv[3],O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)) == -1) {
+		printf("Can't create file\n");
 		return 1;
 	}
 	
 	//Empezamos a recibir	
 		readBuffer = (char *) calloc(1,BUFFERSIZE);
 
-		while((readBytes = read(server,readBuffer,BUFFERSIZE)) > 0) {
+		while((readBytes = read(client,readBuffer,BUFFERSIZE)) > 0) {
 			totalWriteBytes = 0;
 			printf("leyendo...\n");
 			while(totalWriteBytes < readBytes) {
@@ -86,12 +88,21 @@ int main(int args, char *argv[]) {
 				printf("Escribiendo...\n");
 			}
 			totalReadBytes += readBytes;
-			printf("Archivo Recibido\n");
+			if(totalReadBytes == atoi(fileSize))
+				break;
 		}
+	
+		printf("File received\n");
+		
+		//Nos despedimos del Server
+		status = write(client, "Bye\r\n", 6);
+		
+		//Esperamos despedida del Server
+		status = read(client, answer, sizeof(answer));
+		printf("Server says: %s\n", answer);
 		
 		//Cerramos
 		free(readBuffer);
 		close(file);
-		close(client);		
+		closeTCPSocket(client);		
 }
-
